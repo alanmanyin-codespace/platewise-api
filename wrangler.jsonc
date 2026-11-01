@@ -1,0 +1,7 @@
+{
+  "name": "platewise-api-dev",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": { "ALLOW_LICENSED_IMPORTS": "false" },
+  "d1_databases": [{ "binding": "DB", "database_name": "platewise-dev", "database_id": "f7aa3b1e-764f-46ce-86ff-470d7b9c852d", "migrations_dir": "migrations" }]
+}
