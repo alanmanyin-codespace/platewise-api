@@ -2,6 +2,56 @@
 
 Cloudflare Worker with a D1-backed offer API. This initial version accepts **synthetic mock offers only**; it is not a pipeline for real flyers. `ALLOW_LICENSED_IMPORTS` remains false and changing it does not enable any real provider. No collection schedule is configured.
 
+## How it fits
+
+The [PlateWise app](https://github.com/alanmanyin-codespace/app-platewise) is the user-facing Expo application. The [flyer collector](https://github.com/alanmanyin-codespace/platewise-flyer-collector) is a separate experimental project. This API is a backend foundation for synthetic offer experiments; the app does not yet consume these endpoints, and the structured run endpoint is not connected to the collector.
+
+```text
+Synthetic data → authenticated ingestion → D1 → read endpoints
+```
+
+## API overview
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Return Worker process health. This does not check database connectivity. |
+| GET | `/v1/offers?location=T2P%201J9` | Return up to 100 legacy mock snapshot offers, optionally filtered by Canadian postal code. |
+| GET | `/v1/observations?location=T2P%201J9` | Return up to 100 mock historical observations, optionally filtered by postal code. |
+| POST | `/v1/ingest/offers` | Insert or update synthetic offers in the legacy snapshot. Requires a bearer token. |
+| POST | `/v1/ingest/runs` | Record a synthetic collection run, observations, and rejection reasons. Requires a bearer token. |
+
+The read endpoints do not require authentication and do not filter expired offers. They are not a production-ready public feed. Ingestion accepts mock data only; responses identify records as samples. API and schema changes in this branch may not be deployed.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 22 or newer and npm.
+- Cloudflare Wrangler (installed as a development dependency).
+- A Cloudflare account and access to the configured D1 database only if using the remote binding or deploying.
+
+### Install and test
+
+```sh
+npm ci
+npm test
+```
+
+`npm test` builds the TypeScript project and runs the Node.js test suite. Use `npm run build` for type checking and compilation alone.
+
+### Run locally with a simulated database
+
+Create a gitignored `.dev.vars` file containing `INGEST_TOKEN=<a local-only test token>`. Keep the token private and do not reuse production credentials. Apply migrations to a local D1 simulation, then start the Worker in local mode:
+
+```sh
+npx wrangler d1 migrations apply DB --local
+npx wrangler dev --local
+```
+
+Use the local address printed by Wrangler to check `GET /health` or request `/v1/offers?location=T2P%201J9`. For a fresh local database, specify the same new `--persist-to` directory on both commands.
+
+**Remote binding:** `npm run dev` uses the repository's D1 binding, which has `remote: true`; the Worker runs locally but queries and writes the configured remote development database. Use `--local` as shown above to avoid changing remote data. Remote mode requires the appropriate Cloudflare authentication and database permissions.
+
 ## Data structure
 
 The existing `offers` table is the current v1 snapshot, keyed by provider, source ID and normalized postal code. The additive second migration reserves nullable structured price and source fields. It also creates `collection_runs` for run status and counts, `offer_observations` for one source-offer snapshot per run, and `collection_rejections` for reason codes without retaining rejected payloads. Monetary fields in the new structure use integer cents; nullable fields represent unknown values. The old `price` column remains for the current API, and existing values are not converted automatically.
@@ -18,26 +68,18 @@ The existing mock uploader still uses the original endpoint. The new endpoint be
 
 Each rejection is `{ "recordReference": "row-7", "reasonCode": "INVALID_DATE" }`. Counts are derived from accepted offers and unique rejected record references; they are not a claim about all source records. The API commits each run atomically. Retrying the **exact same request bytes** with the same run ID returns 200; reuse of a run ID with different bytes returns 409. New runs return 201. Persist and retry the original bytes rather than rebuilding the JSON. Run and observation retention and the collector integration are not implemented.
 
-Both migrations have been applied to the development database. The second one changed during development, so a local simulation persisted from an earlier test may hold the older shape; for a fresh local test, use a new `--persist-to` directory for both `wrangler d1 migrations apply DB --local` and `wrangler dev`.
+If a local simulation was created with an earlier development version of a migration, use a fresh `--persist-to` directory and apply both migrations there. Do not edit applied migrations in a shared environment without a migration plan.
 
-## Local development
+## Deployment and data access
 
-Use Node 22 or newer. Run `npm ci` and `npm test`. Create a gitignored `.dev.vars` file containing `INGEST_TOKEN=<a local-only test token>`, then run `npm run dev`.
+The checked-in configuration targets a development Worker and D1 database. Before any remote migration, deployment, or secret update, verify the Cloudflare account, Worker, database binding, and applied migration history. Keep `INGEST_TOKEN` in a server-side secret store and coordinate it securely with authorized uploaders; never expose it to client code or commit it.
 
-The `DB` binding sets `"remote": true`, so `npm run dev` runs the Worker on your machine while every query goes to the real `platewise-dev` database; mock data written during development is stored there. This needs `npx wrangler login` first. To work against a local simulation instead, run `npx wrangler dev --local` after `npx wrangler d1 migrations apply DB --local`. Never commit or share tokens. `GET /health` reports process health, and `GET /v1/offers?location=T2P%201J9` returns at most 100 offers. `POST /v1/ingest/offers` requires an `Authorization: Bearer` token and an `{ "offers": [...] }` payload from the collector's mock uploader. Mock offers are marked `sample: true` in responses. Uploads are upserted by provider, ID, and postal code.
+This repository does not establish the current deployment or remote migration state. Verify those separately before making remote changes. Real data requires an authorized source, a reviewed ingestion contract, and provider-specific permissions. Do not automate collection or publish data from the unofficial Flipp adapter without authorization. Review access controls, abuse protection, data retention, and monitoring before production use.
 
-## Development deployment (approval required)
+## Project layout
 
-The configuration names Worker `platewise-api-dev` and database `platewise-dev` (`7a434f30-dc15-4482-82e3-18ed1d60d653`), created for development only. The separate `platewise-db` (`f7aa3b1e-764f-46ce-86ff-470d7b9c852d`) is **not** bound here and carries no schema; do not point this configuration at it without review.
-
-Both migrations have been applied to `platewise-dev` and the binding is verified working from a local `wrangler dev` session. Before any further remote change, confirm you are authenticated to the intended account and that the database identity matches. The Worker itself has **not** been deployed. After explicit approval, from this directory run:
-
-```sh
-npx wrangler d1 migrations list DB --remote
-npx wrangler d1 migrations apply DB --remote
-npx wrangler deploy
-```
-
-Set the secret interactively using `npx wrangler secret put INGEST_TOKEN --name platewise-api-dev`; enter the value at the hidden prompt. Coordinate the same secret securely with the collector's execution environment, never frontend code. Secret setup and deployment may need the Worker to exist first. The exact deployed URL is not known until deployment. Deployment and remote secret setup have not been performed; remote migrations and the live binding have.
-
-Real data requires an authorized source, a reviewed ingestion contract and provider-specific permissions. Do not use the unofficial Flipp adapter for automated collection or publication without authorization. Review access controls, request size limits, abuse protection, data retention and operational monitoring before public production use.
+- `src/index.ts` — Worker routing and HTTP handlers.
+- `src/validation.ts` — legacy mock-offer validation.
+- `src/runs.ts` — structured run validation and persistence.
+- `migrations/` — D1 schema migrations.
+- `test/` — API and run-ingestion tests.
