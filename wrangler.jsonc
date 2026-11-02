@@ -3,5 +3,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "vars": { "ALLOW_LICENSED_IMPORTS": "false" },
-  "d1_databases": [{ "binding": "DB", "database_name": "platewise-dev", "database_id": "f7aa3b1e-764f-46ce-86ff-470d7b9c852d", "migrations_dir": "migrations" }]
+  // Development database only. The separate platewise-db (f7aa3b1e-764f-46ce-86ff-470d7b9c852d) is not bound here.
+  // "remote": true keeps the Worker running locally while DB queries go to the real platewise-dev database.
+  // Pass `wrangler dev --local` to fall back to the local simulation instead.
+  "d1_databases": [{ "binding": "DB", "database_name": "platewise-dev", "database_id": "7a434f30-dc15-4482-82e3-18ed1d60d653", "migrations_dir": "migrations", "remote": true }]
 }
