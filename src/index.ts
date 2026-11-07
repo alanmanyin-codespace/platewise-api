@@ -2,16 +2,23 @@ import { validateOffers } from './validation.js';
 import { storeRun, validateRun } from './runs.js';
 interface Env { DB: D1Database; INGEST_TOKEN?: string }
 const json = (body: unknown, status = 200) => Response.json(body, {status, headers:{'Cache-Control':'no-store'}});
+// ?market=calgary or ?location=T2P%201J9; null means no filter, undefined means invalid.
+const readArea = (url:URL): string|null|undefined => {
+  const market = url.searchParams.get('market'), location = url.searchParams.get('location');
+  if (market !== null) return /^[a-z0-9-]{1,50}$/.test(market) && location === null ? market : undefined;
+  if (location === null) return null;
+  return /^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i.test(location) ? location.toUpperCase().replace(/\s/g,'') : undefined;
+};
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/health') return json({ status:'ok' });
     if (request.method === 'GET' && url.pathname === '/v1/observations') {
-      const location = url.searchParams.get('location');
-      if (location !== null && !/^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i.test(location)) return json({error:'Invalid location'},400);
-      const sql = 'SELECT run_id AS runId, provider AS source, offer_id AS sourceOfferId, location, product_name AS productName, retailer, source_retailer_id AS sourceRetailerId, price_cents AS priceCents, currency, price_text AS priceText, quantity AS purchaseQuantity, unit AS purchaseUnit, valid_from AS validFrom, valid_until AS validUntil, observed_at AS observedAt FROM offer_observations';
-      const result = location ? await env.DB.prepare(sql+' WHERE location = ? ORDER BY observed_at DESC LIMIT 100').bind(location.toUpperCase().replace(/\s/g,'')).all() : await env.DB.prepare(sql+' ORDER BY observed_at DESC LIMIT 100').all();
-      return json({observations:result.results.map(row=>({...row,isSample:true}))});
+      const area = readArea(url);
+      if (area === undefined) return json({error:'Invalid location'},400);
+      const sql = 'SELECT run_id AS runId, provider AS source, offer_id AS sourceOfferId, location, product_name AS productName, retailer, source_retailer_id AS sourceRetailerId, price_cents AS priceCents, currency, price_text AS priceText, quantity AS purchaseQuantity, unit AS purchaseUnit, valid_from AS validFrom, valid_until AS validUntil, observed_at AS observedAt, seen_postal_codes AS seenPostalCodes FROM offer_observations';
+      const result = area ? await env.DB.prepare(sql+' WHERE location = ? ORDER BY observed_at DESC LIMIT 100').bind(area).all() : await env.DB.prepare(sql+' ORDER BY observed_at DESC LIMIT 100').all();
+      return json({observations:result.results.map(row=>({...row,seenPostalCodes:row.seenPostalCodes ? JSON.parse(String(row.seenPostalCodes)) : null,isSample:true}))});
     }
     if (request.method === 'POST' && url.pathname === '/v1/ingest/runs') {
       if (!env.INGEST_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.INGEST_TOKEN}`) return json({error:'Unauthorized'},401);
@@ -28,10 +35,10 @@ export default {
       return json({status:result,accepted:body.offers.length},result === 'created' ? 201 : 200);
     }
     if (request.method === 'GET' && url.pathname === '/v1/offers') {
-      const location = url.searchParams.get('location');
-      if (location !== null && !/^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i.test(location)) return json({error:'Invalid location'},400);
-      const query = 'SELECT id, product_name AS productName, retailer, location, price, currency, valid_until AS validUntil, collected_at AS collectedAt, provider FROM offers';
-      const result = location ? await env.DB.prepare(query+' WHERE location = ? ORDER BY collected_at DESC LIMIT 100').bind(location.toUpperCase().replace(/\s/g,'')).all() : await env.DB.prepare(query+' ORDER BY collected_at DESC LIMIT 100').all();
+      const area = readArea(url);
+      if (area === undefined) return json({error:'Invalid location'},400);
+      const query = 'SELECT id, product_name AS productName, retailer, location, price, price_cents AS priceCents, currency, price_text AS priceText, valid_until AS validUntil, collected_at AS collectedAt, provider, source_offer_id AS sourceOfferId, source_run_id AS sourceRunId FROM offers';
+      const result = area ? await env.DB.prepare(query+' WHERE location = ? ORDER BY collected_at DESC LIMIT 100').bind(area).all() : await env.DB.prepare(query+' ORDER BY collected_at DESC LIMIT 100').all();
       return json({offers:result.results.map(row => ({...row, sample:true}))});
     }
     if (request.method === 'POST' && url.pathname === '/v1/ingest/offers') {

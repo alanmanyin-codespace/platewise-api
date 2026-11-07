@@ -15,8 +15,8 @@ Synthetic data → authenticated ingestion → D1 → read endpoints
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Return Worker process health. This does not check database connectivity. |
-| GET | `/v1/offers?location=T2P%201J9` | Return up to 100 legacy mock snapshot offers, optionally filtered by Canadian postal code. |
-| GET | `/v1/observations?location=T2P%201J9` | Return up to 100 mock historical observations, optionally filtered by postal code. |
+| GET | `/v1/offers?location=T2P%201J9` | Return up to 100 mock snapshot offers, optionally filtered by Canadian postal code or `market=calgary`. |
+| GET | `/v1/observations?location=T2P%201J9` | Return up to 100 mock historical observations, optionally filtered by postal code or `market=calgary`. |
 | POST | `/v1/ingest/offers` | Insert or update synthetic offers in the legacy snapshot. Requires a bearer token. |
 | POST | `/v1/ingest/runs` | Record a synthetic collection run, observations, and rejection reasons. Requires a bearer token. |
 
@@ -65,6 +65,8 @@ The existing mock uploader still uses the original endpoint. The new endpoint be
 ```json
 {"schemaVersion":1,"run":{"id":"run-001","source":"mock","searchPostalCode":"T2P1J9","startedAt":"2026-11-01T12:00:00Z","finishedAt":"2026-11-01T12:00:04Z","status":"completed","isSample":true},"offers":[{"sourceOfferId":"sample-milk","retailer":{"sourceRetailerId":"example-store","displayName":"Example Store"},"productName":"Milk","price":{"amountCents":499,"currency":"CAD","text":"$4.99 each","purchaseQuantity":1,"purchaseUnit":"item"},"validFrom":"2026-11-01","validUntil":"2026-11-07","observedAt":"2026-11-01T12:00:02Z","isSample":true}],"rejections":[]}
 ```
+
+A run may add `run.market`, a lowercase slug such as `calgary`, and each offer may add `seenIn`, a list of 1-20 postal codes. Market runs store the slug as `location` and the postal codes in `offer_observations.seen_postal_codes`; `searchPostalCode` is still required.
 
 Each rejection is `{ "recordReference": "row-7", "reasonCode": "INVALID_DATE" }`. Counts are derived from accepted offers and unique rejected record references; they are not a claim about all source records. The API commits each run atomically. Retrying the **exact same request bytes** with the same run ID returns 200; reuse of a run ID with different bytes returns 409. New runs return 201. Persist and retry the original bytes rather than rebuilding the JSON. Run and observation retention and the collector integration are not implemented.
 
