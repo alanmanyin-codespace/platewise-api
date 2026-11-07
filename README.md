@@ -19,6 +19,7 @@ Synthetic data → authenticated ingestion → D1 → read endpoints
 | GET | `/v1/observations?location=T2P%201J9` | Return up to 100 mock historical observations, optionally filtered by postal code or `market=calgary`. |
 | POST | `/v1/ingest/offers` | Insert or update synthetic offers in the legacy snapshot. Requires a bearer token. |
 | POST | `/v1/ingest/runs` | Record a synthetic collection run, observations, and rejection reasons. Requires a bearer token. |
+| GET, POST | `/v1/ingest/recipes` | List imported recipe IDs, or store up to 25 recipes and their ingredients. Requires a bearer token. |
 
 The read endpoints do not require authentication and do not filter expired offers. They are not a production-ready public feed. Ingestion accepts mock data only; responses identify records as samples. API and schema changes in this branch may not be deployed.
 

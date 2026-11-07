@@ -1,5 +1,6 @@
 import { readPage, validateOffers } from './validation.js';
 import { storeRun, validateRun } from './runs.js';
+import { storeRecipes, validateRecipes } from './recipes.js';
 interface Env { DB: D1Database; INGEST_TOKEN?: string; ALLOW_LICENSED_IMPORTS?: string }
 const json = (body: unknown, status = 200) => Response.json(body, {status, headers:{'Cache-Control':'no-store'}});
 // ?market=calgary or ?location=T2P%201J9; null means no filter, undefined means invalid.
@@ -33,6 +34,20 @@ export default {
       const result = await storeRun(env.DB,body,hash);
       if (result === 'conflict') return json({error:'Run ID already used with a different payload'},409);
       return json({status:result,accepted:body.offers.length},result === 'created' ? 201 : 200);
+    }
+    if (url.pathname === '/v1/ingest/recipes') {
+      if (!env.INGEST_TOKEN || request.headers.get('Authorization') !== `Bearer ${env.INGEST_TOKEN}`) return json({error:'Unauthorized'},401);
+      if (request.method === 'GET') {
+        const result = await env.DB.prepare('SELECT source_id AS id FROM recipes WHERE source = ?').bind(url.searchParams.get('source') ?? 'themealdb').all<{id:string}>();
+        return json({ids:result.results.map(row => row.id)});
+      }
+      if (request.method === 'POST') {
+        if (Number(request.headers.get('content-length') ?? 0) > 100000) return json({error:'Payload too large'},413);
+        let body:unknown; try { body = await request.json(); } catch { return json({error:'Invalid JSON'},400); }
+        if (!validateRecipes(body)) return json({error:'Invalid recipes'},400);
+        await storeRecipes(env.DB,body,new Date().toISOString());
+        return json({accepted:body.recipes.length});
+      }
     }
     if (request.method === 'GET' && url.pathname === '/v1/offers') {
       const area = readArea(url);
