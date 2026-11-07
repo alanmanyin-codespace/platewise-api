@@ -20,3 +20,13 @@ test('accepts an optional market and the postal codes that saw each offer', () =
   assert.equal(validateRun({...market, offers:[{...market.offers[0],seenIn:[]}]}), false);
   assert.equal(validateRun({...market, offers:[{...market.offers[0],seenIn:['nope']}]}), false);
 });
+
+test('accepts Flipp runs only when licensed imports are enabled and they are not samples', () => {
+  const flipp = {...sample, run:{...sample.run,source:'flipp',isSample:false}, offers:[{...sample.offers[0],isSample:false}]};
+  assert.equal(validateRun(flipp), false);
+  assert.equal(validateRun(flipp, true), true);
+  assert.equal(validateRun({...flipp, run:{...flipp.run,isSample:true}}, true), false);
+  assert.equal(validateRun({...flipp, offers:[sample.offers[0]]}, true), false);
+  assert.equal(validateRun({...flipp, run:{...flipp.run,source:'other'}}, true), false);
+  assert.equal(validateRun({...sample, run:{...sample.run,isSample:false}}, true), false);
+});

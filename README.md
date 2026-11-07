@@ -1,6 +1,6 @@
 # PlateWise API
 
-Cloudflare Worker with a D1-backed offer API. This initial version accepts **synthetic mock offers only**; it is not a pipeline for real flyers. `ALLOW_LICENSED_IMPORTS` remains false and changing it does not enable any real provider. No collection schedule is configured.
+Cloudflare Worker with a D1-backed offer API. It accepts synthetic mock data and, while `ALLOW_LICENSED_IMPORTS` is `"true"`, real Flipp runs through `POST /v1/ingest/runs`. `GET /v1/offers` publicly returns the real Flipp snapshot; `GET /v1/observations` returns mock rows only. Set the variable to `"false"` to stop accepting Flipp runs. No collection schedule is configured.
 
 ## How it fits
 
@@ -15,7 +15,7 @@ Synthetic data → authenticated ingestion → D1 → read endpoints
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Return Worker process health. This does not check database connectivity. |
-| GET | `/v1/offers?location=T2P%201J9` | Return up to 100 mock snapshot offers, optionally filtered by Canadian postal code or `market=calgary`. |
+| GET | `/v1/offers?location=T2P%201J9` | Return real Flipp snapshot offers, optionally filtered by `market=calgary` or a postal code. Use `limit` (1-100, default 100) and `offset`; follow `nextOffset` until it is `null`. Market data is stored under the market, so use `market=calgary` for Calgary. |
 | GET | `/v1/observations?location=T2P%201J9` | Return up to 100 mock historical observations, optionally filtered by postal code or `market=calgary`. |
 | POST | `/v1/ingest/offers` | Insert or update synthetic offers in the legacy snapshot. Requires a bearer token. |
 | POST | `/v1/ingest/runs` | Record a synthetic collection run, observations, and rejection reasons. Requires a bearer token. |

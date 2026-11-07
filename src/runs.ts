@@ -1,6 +1,6 @@
 type Price = { amountCents:number; currency:'CAD'; text:string; purchaseQuantity:number; purchaseUnit:string };
-type RunOffer = { sourceOfferId:string; retailer:{sourceRetailerId:string;displayName:string}; productName:string; price:Price; validFrom:string|null; validUntil:string|null; observedAt:string; isSample:true; seenIn?:string[] };
-export type RunPayload = { schemaVersion:1; run:{id:string;source:'mock';searchPostalCode:string;startedAt:string;finishedAt:string;status:'completed'|'partial'|'failed';isSample:true;market?:string}; offers:RunOffer[]; rejections:{recordReference:string;reasonCode:string}[] };
+type RunOffer = { sourceOfferId:string; retailer:{sourceRetailerId:string;displayName:string}; productName:string; price:Price; validFrom:string|null; validUntil:string|null; observedAt:string; isSample:boolean; seenIn?:string[] };
+export type RunPayload = { schemaVersion:1; run:{id:string;source:'mock'|'flipp';searchPostalCode:string;startedAt:string;finishedAt:string;status:'completed'|'partial'|'failed';isSample:boolean;market?:string}; offers:RunOffer[]; rejections:{recordReference:string;reasonCode:string}[] };
 const obj = (v:unknown): v is Record<string,unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const str = (v:unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= 200;
 const instant = (v:unknown): v is string => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v.slice(0,10);
@@ -9,14 +9,15 @@ const postal = /^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i;
 const compact = (code:string) => code.toUpperCase().replace(/\s/g,'');
 // A market run covers an area, so its market slug is stored as the location.
 export const storageLocation = (run:RunPayload['run']) => run.market ?? compact(run.searchPostalCode);
-export function validateRun(v:unknown): v is RunPayload {
+// Flipp is real data, so it needs ALLOW_LICENSED_IMPORTS and must not be labelled as a sample.
+export function validateRun(v:unknown, allowLicensed = false): v is RunPayload {
   if (!obj(v) || v.schemaVersion !== 1 || !obj(v.run) || !Array.isArray(v.offers) || v.offers.length > 100 || !Array.isArray(v.rejections) || v.rejections.length > 100) return false;
   const r = v.run;
-  if (!str(r.id) || r.source !== 'mock' || r.isSample !== true || !['completed','partial','failed'].includes(String(r.status)) || !str(r.searchPostalCode) || !postal.test(r.searchPostalCode) || !instant(r.startedAt) || !instant(r.finishedAt) || Date.parse(r.finishedAt) < Date.parse(r.startedAt)) return false;
+  if (!str(r.id) || (r.source !== 'mock' && !(allowLicensed && r.source === 'flipp')) || r.isSample !== (r.source === 'mock') || !['completed','partial','failed'].includes(String(r.status)) || !str(r.searchPostalCode) || !postal.test(r.searchPostalCode) || !instant(r.startedAt) || !instant(r.finishedAt) || Date.parse(r.finishedAt) < Date.parse(r.startedAt)) return false;
   if (r.market !== undefined && (typeof r.market !== 'string' || !/^[a-z0-9-]{1,50}$/.test(r.market))) return false;
   const ids = new Set<string>();
   for (const o of v.offers) {
-    if (!obj(o) || !str(o.sourceOfferId) || ids.has(o.sourceOfferId) || !obj(o.retailer) || !str(o.retailer.sourceRetailerId) || !str(o.retailer.displayName) || !str(o.productName) || o.isSample !== true || !obj(o.price)) return false;
+    if (!obj(o) || !str(o.sourceOfferId) || ids.has(o.sourceOfferId) || !obj(o.retailer) || !str(o.retailer.sourceRetailerId) || !str(o.retailer.displayName) || !str(o.productName) || o.isSample !== r.isSample || !obj(o.price)) return false;
     ids.add(o.sourceOfferId);
     if (o.seenIn !== undefined && (!Array.isArray(o.seenIn) || o.seenIn.length < 1 || o.seenIn.length > 20 || !o.seenIn.every(c => typeof c === 'string' && postal.test(c)))) return false;
     const p = o.price;

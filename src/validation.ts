@@ -9,3 +9,10 @@ export function validateOffers(body: unknown): body is { offers: Offer[] } {
     return text(o.id) && text(o.productName) && text(o.retailer) && typeof o.location === 'string' && /^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i.test(o.location) && typeof o.price === 'number' && Number.isFinite(o.price) && o.price >= 0 && o.currency === 'CAD' && date && typeof o.collectedAt === 'string' && !Number.isNaN(Date.parse(o.collectedAt)) && o.provider === 'mock';
   });
 }
+
+export function readPage(url: URL): { limit: number; offset: number } | null {
+  const limit = url.searchParams.get('limit') ?? '100', offset = url.searchParams.get('offset') ?? '0';
+  if (!/^\d+$/.test(limit) || !/^\d+$/.test(offset)) return null;
+  const page = { limit: Number(limit), offset: Number(offset) };
+  return page.limit >= 1 && page.limit <= 100 && Number.isSafeInteger(page.offset) ? page : null;
+}
