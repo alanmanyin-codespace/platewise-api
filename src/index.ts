@@ -1,8 +1,13 @@
 import { readPage, validateOffers } from './validation.js';
 import { storeRun, validateRun } from './runs.js';
 import { storeRecipes, validateRecipes } from './recipes.js';
+import { cuisineOptions, ingredientOptions, proteinOptions, storeOptions } from './recipe-options.js';
 interface Env { DB: D1Database; INGEST_TOKEN?: string; ALLOW_LICENSED_IMPORTS?: string }
 const json = (body: unknown, status = 200) => Response.json(body, {status, headers:{'Cache-Control':'no-store'}});
+// Public option lists change with the monthly recipe import and weekly flyers; the web app reads them cross-origin.
+const CORS = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'Content-Type'};
+const publicJson = (body: unknown) => Response.json(body, {headers:{...CORS,'Cache-Control':'public, max-age=86400'}});
+const OPTION_PATHS = new Set(['/v1/recipes/ingredients','/v1/recipes/cuisines','/v1/recipes/proteins','/v1/stores']);
 // ?market=calgary or ?location=T2P%201J9; null means no filter, undefined means invalid.
 const readArea = (url:URL): string|null|undefined => {
   const market = url.searchParams.get('market'), location = url.searchParams.get('location');
@@ -14,6 +19,15 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/health') return json({ status:'ok' });
+    if (OPTION_PATHS.has(url.pathname) && request.method === 'OPTIONS') return new Response(null, {status:204, headers:CORS});
+    if (request.method === 'GET' && url.pathname === '/v1/recipes/ingredients') return publicJson({ingredients: await ingredientOptions(env.DB)});
+    if (request.method === 'GET' && url.pathname === '/v1/recipes/cuisines') return publicJson({cuisines: await cuisineOptions(env.DB)});
+    if (request.method === 'GET' && url.pathname === '/v1/recipes/proteins') return publicJson({proteins: await proteinOptions(env.DB)});
+    if (request.method === 'GET' && url.pathname === '/v1/stores') {
+      const market = url.searchParams.get('market');
+      if (market === null || !/^[a-z0-9-]{1,50}$/.test(market)) return json({error:'Invalid market'},400);
+      return publicJson({stores: await storeOptions(env.DB, market)});
+    }
     if (request.method === 'GET' && url.pathname === '/v1/observations') {
       const area = readArea(url);
       if (area === undefined) return json({error:'Invalid location'},400);

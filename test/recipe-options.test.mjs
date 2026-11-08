@@ -35,3 +35,26 @@ test('lists grocery stores with current offers in a market', async () => {
   assert.match(sql, /trim\(o\.retailer\) = r\.name/i);
   assert.match(sql, /valid_until IS NULL OR o\.valid_until >= date\('now'\)/i);
 });
+
+import worker from '../dist/index.js';
+const call = (path, method = 'GET', rows = [{ name: 'Italian', recipeCount: 60 }]) => worker.fetch(new Request(`https://x.test${path}`, { method }), { DB: fakeDb(rows) });
+
+test('serves option lists publicly with a one-day cache', async () => {
+  for (const [path, field] of [['/v1/recipes/ingredients', 'ingredients'], ['/v1/recipes/cuisines', 'cuisines'], ['/v1/recipes/proteins', 'proteins'], ['/v1/stores?market=calgary', 'stores']]) {
+    const response = await call(path);
+    assert.equal(response.status, 200, path);
+    assert.equal(response.headers.get('Cache-Control'), 'public, max-age=86400');
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.ok(Array.isArray((await response.json())[field]), path);
+    const preflight = await call(path, 'OPTIONS');
+    assert.equal(preflight.status, 204);
+    assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), '*');
+  }
+});
+
+test('stores need a valid market; other methods fall through', async () => {
+  assert.equal((await call('/v1/stores')).status, 400);
+  assert.equal((await call('/v1/stores?market=Calgary!')).status, 400);
+  assert.equal((await call('/v1/recipes/ingredients', 'POST')).status, 404);
+  assert.equal((await call('/v1/offers')).headers.get('Cache-Control'), 'no-store');
+});

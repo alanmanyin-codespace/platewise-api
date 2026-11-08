@@ -20,6 +20,8 @@ Synthetic data → authenticated ingestion → D1 → read endpoints
 | POST | `/v1/ingest/offers` | Insert or update synthetic offers in the legacy snapshot. Requires a bearer token. |
 | POST | `/v1/ingest/runs` | Record a synthetic collection run, observations, and rejection reasons. Requires a bearer token. |
 | GET, POST | `/v1/ingest/recipes` | List imported recipe IDs, or store up to 25 recipes and their ingredients. Requires a bearer token. |
+| GET | `/v1/recipes/ingredients`, `/v1/recipes/cuisines`, `/v1/recipes/proteins` | Public option lists for the app's profile interview, built from the imported recipes. Proteins come from recipe categories; Vegetarian and Vegan form "Plant-based". Cached for one day; CORS open. |
+| GET | `/v1/stores?market=calgary` | Public list of grocery stores (the `retailers` table, migration 0006) with current offers in the market, most offers first. Cached for one day; CORS open. |
 
 The read endpoints do not require authentication and do not filter expired offers. They are not a production-ready public feed. Ingestion accepts mock data only; responses identify records as samples. API and schema changes in this branch may not be deployed.
 
